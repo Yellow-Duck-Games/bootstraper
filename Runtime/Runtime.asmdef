@@ -1,0 +1,7 @@
+{
+  "name": "Bootstrapper.Runtime",
+  "references": [],
+  "rootNamespace": "Bootstrapper",
+  "includePlatforms": [],
+  "excludePlatforms": []
+}

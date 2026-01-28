@@ -1,0 +1,7 @@
+{
+  "name": "com.yellowduckgames.bootstrapper",
+  "version": "1.0.0",
+  "displayName": "Bootstrapper",
+  "description": "Services scene to DDOL infrastructure",
+  "unity": "2021.3"
+}

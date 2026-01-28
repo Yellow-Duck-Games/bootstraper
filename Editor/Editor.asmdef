@@ -1,0 +1,7 @@
+{
+  "name": "Bootstrapper.Editor",
+  "rootNamespace": "Bootstrapper.Editor",
+  "references": ["Bootstrapper.Runtime"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": []
+}
