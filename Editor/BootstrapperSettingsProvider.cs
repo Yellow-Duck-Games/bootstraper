@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,13 +24,14 @@ namespace Bootstrapper.Editor {
         
         private void InitStyles() {
             if (_greenLabelStyle == null) {
-                _greenLabelStyle = new GUIStyle(EditorStyles.miniLabel) {
-                    normal = { textColor = new Color(0.2f, 0.8f, 0.2f) }
+                _greenLabelStyle = new GUIStyle(EditorStyles.label) {
+                    normal = { textColor = new Color(0.2f, 0.8f, 0.2f) },
+                    fontStyle = FontStyle.Bold
                 };
             }
             
             if (_yellowLabelStyle == null) {
-                _yellowLabelStyle = new GUIStyle(EditorStyles.miniLabel) {
+                _yellowLabelStyle = new GUIStyle(EditorStyles.label) {
                     normal = { textColor = new Color(0.9f, 0.7f, 0.1f) }
                 };
             }
@@ -58,23 +60,77 @@ namespace Bootstrapper.Editor {
             EditorGUILayout.LabelField("Scene Configuration", EditorStyles.boldLabel);
             EditorGUILayout.Space(5);
             
-            EditorGUILayout.PropertyField(_serializedSettings.FindProperty("ServicesScene"));
-            EditorGUILayout.PropertyField(_serializedSettings.FindProperty("DefaultScene"));
+            // Services Scene
+            var servicesSceneConfigured = BootstrapperSettings.Instance.ServicesScene.SceneAsset != null;
+            var servicesSceneProp = _serializedSettings.FindProperty("ServicesScene");
+            var servicesAssetProp = servicesSceneProp.FindPropertyRelative("SceneAsset");
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginChangeCheck();
+            var newServicesScene = EditorGUILayout.ObjectField("Services Scene", servicesAssetProp.objectReferenceValue, typeof(SceneAsset), false);
+            if (EditorGUI.EndChangeCheck()) {
+                servicesAssetProp.objectReferenceValue = newServicesScene;
+                if (newServicesScene != null) {
+                    var path = AssetDatabase.GetAssetPath(newServicesScene);
+                    servicesSceneProp.FindPropertyRelative("ScenePath").stringValue = path;
+                    servicesSceneProp.FindPropertyRelative("SceneName").stringValue = System.IO.Path.GetFileNameWithoutExtension(path);
+                } else {
+                    servicesSceneProp.FindPropertyRelative("ScenePath").stringValue = "";
+                    servicesSceneProp.FindPropertyRelative("SceneName").stringValue = "";
+                }
+            }
+            
+            if (!servicesSceneConfigured) {
+                if (GUILayout.Button("Initialize", GUILayout.Width(70))) {
+                    CreateServicesScene();
+                }
+            } else {
+                GUILayout.Label("✓", _greenLabelStyle, GUILayout.Width(20));
+            }
+            EditorGUILayout.EndHorizontal();
+            
+            // Default Scene
+            var defaultSceneConfigured = BootstrapperSettings.Instance.DefaultScene.SceneAsset != null;
+            var defaultSceneProp = _serializedSettings.FindProperty("DefaultScene");
+            var defaultAssetProp = defaultSceneProp.FindPropertyRelative("SceneAsset");
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUI.BeginChangeCheck();
+            var newDefaultScene = EditorGUILayout.ObjectField("Default Scene", defaultAssetProp.objectReferenceValue, typeof(SceneAsset), false);
+            if (EditorGUI.EndChangeCheck()) {
+                defaultAssetProp.objectReferenceValue = newDefaultScene;
+                if (newDefaultScene != null) {
+                    var path = AssetDatabase.GetAssetPath(newDefaultScene);
+                    defaultSceneProp.FindPropertyRelative("ScenePath").stringValue = path;
+                    defaultSceneProp.FindPropertyRelative("SceneName").stringValue = System.IO.Path.GetFileNameWithoutExtension(path);
+                } else {
+                    defaultSceneProp.FindPropertyRelative("ScenePath").stringValue = "";
+                    defaultSceneProp.FindPropertyRelative("SceneName").stringValue = "";
+                }
+            }
+            
+            if (defaultSceneConfigured) {
+                GUILayout.Label("✓", _greenLabelStyle, GUILayout.Width(20));
+            } else {
+                GUILayout.Label("", GUILayout.Width(20));
+            }
+            EditorGUILayout.EndHorizontal();
             
             if (_serializedSettings.ApplyModifiedProperties()) {
                 AssetDatabase.SaveAssets();
             }
-            
-            var servicesSceneConfigured = BootstrapperSettings.Instance.ServicesScene.SceneAsset != null;
             
             EditorGUILayout.Space(20);
             EditorGUILayout.LabelField("Service Generator", EditorStyles.boldLabel);
             
             if (!servicesSceneConfigured) {
                 EditorGUILayout.HelpBox("Configure Services Scene above to enable service generation.", MessageType.Warning);
-                return;
+            } else {
+                DrawServiceGenerator();
             }
-            
+        }
+        
+        private void DrawServiceGenerator() {
             EditorGUILayout.Space(5);
             
             EditorGUI.BeginChangeCheck();
@@ -97,11 +153,12 @@ namespace Bootstrapper.Editor {
             
             EditorGUILayout.BeginHorizontal();
             
+            // Generate button
             var toGenerate = _selectedServices
                 .Where(kvp => kvp.Value && (!ServiceGenerator.ServiceScriptExists(kvp.Key, _servicesFolder) || _overwriteExisting))
                 .Select(kvp => kvp.Key)
                 .ToList();
-
+            
             EditorGUI.BeginDisabledGroup(toGenerate.Count == 0);
             if (GUILayout.Button($"Generate ({toGenerate.Count})", GUILayout.Height(30))) {
                 ServiceGenerator.Generate(toGenerate, _servicesFolder, _overwriteExisting);
@@ -109,6 +166,7 @@ namespace Bootstrapper.Editor {
             }
             EditorGUI.EndDisabledGroup();
             
+            // Delete button
             var toDelete = _selectedServices
                 .Where(kvp => !kvp.Value && ServiceGenerator.ServiceScriptExists(kvp.Key, _servicesFolder))
                 .Select(kvp => kvp.Key)
@@ -163,6 +221,52 @@ namespace Bootstrapper.Editor {
             
             EditorGUI.indentLevel--;
             EditorGUILayout.Space(5);
+        }
+        
+        private void CreateServicesScene() {
+            // Create folder if not exists
+            if (!AssetDatabase.IsValidFolder("Assets/Scenes")) {
+                AssetDatabase.CreateFolder("Assets", "Scenes");
+            }
+            
+            var path = "Assets/Scenes/Services.unity";
+            
+            // Check if file already exists
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(path) != null) {
+                // Scene exists, just assign it
+                var existingAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(path);
+                AssignServicesScene(existingAsset, path);
+                return;
+            }
+            
+            // Create empty scene
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            
+            // Save scene
+            EditorSceneManager.SaveScene(scene, path);
+            AssetDatabase.Refresh();
+            
+            // Set in settings
+            var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(path);
+            AssignServicesScene(sceneAsset, path);
+            
+            Debug.Log($"Created Services scene at {path}");
+        }
+        
+        private void AssignServicesScene(SceneAsset sceneAsset, string path) {
+            var settings = BootstrapperSettings.Instance;
+            
+            var so = new SerializedObject(settings);
+            var servicesSceneProp = so.FindProperty("ServicesScene");
+            servicesSceneProp.FindPropertyRelative("SceneAsset").objectReferenceValue = sceneAsset;
+            servicesSceneProp.FindPropertyRelative("ScenePath").stringValue = path;
+            servicesSceneProp.FindPropertyRelative("SceneName").stringValue = System.IO.Path.GetFileNameWithoutExtension(path);
+            so.ApplyModifiedProperties();
+            
+            // Refresh serialized settings
+            _serializedSettings = new SerializedObject(settings);
+            
+            AssetDatabase.SaveAssets();
         }
         
         [SettingsProvider]
